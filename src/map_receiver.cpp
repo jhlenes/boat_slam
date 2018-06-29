@@ -6,9 +6,17 @@
 void mapCallback(const nav_msgs::OccupancyGrid &map){
 
     ROS_INFO("Map received!");
-    uint32_t height = map.info.height;
-    uint32_t width = map.info.width;
+    const unsigned int height = map.info.height;
+    const unsigned int width = map.info.width;
     ROS_INFO_STREAM("Height: " << height << "\tWidth: " << width);
+
+    for (size_t row = 0; row < height; ++row) {
+        for (size_t col = 0; col < width; ++col) {
+            const signed char a = map.data[row*width + col];
+            std::cout << int(a) << " ";
+        }
+        std::cout << "\n";
+    }
 }
 
 int main(int argc, char** argv){
