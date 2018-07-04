@@ -4,8 +4,9 @@
 #include <nav_msgs/Path.h>
 
 #include <queue>
-#include <string>
 #include <algorithm>
+#include <vector>
+#include <iostream>
 
 double x = 0.0;
 double y = 0.0;
@@ -17,46 +18,106 @@ struct cell {
 
 void mapCallback(const nav_msgs::OccupancyGrid &grid){
 
-    uint32_t height = grid.info.height;
-    uint32_t width = grid.info.width;
+    ROS_WARN("MAP RECEIVED!");
+
+    int height = grid.info.height;
+    int width = grid.info.width;
+
+    ROS_WARN_STREAM("Size: " << height << ", " << width);
 
     // Find grid position of robot
-    float resolution = grid.info.resolution;
+    double resolution = grid.info.resolution;
     double originX = grid.info.origin.position.x;
     double originY = grid.info.origin.position.x;
-    ROS_WARN_STREAM("X: " << originX);
+    // TODO: is origin always the most negative position value?
+    // If not, the following will fail. I.e. negative row and col.
     int row = (x - originX) / resolution;
     int col = (y - originY) / resolution;
+    ROS_WARN_STREAM("Position: " << row << ", " << col);
 
-    // generate distance transform with BFS
+    // Generate distance transform with BFS
     std::queue<cell> toVisit;
-    bool visited[height][width];
+    bool visited[height][width] = { };
+    int distanceTransform[height][width] = { };
+
     cell start = {row, col};
     toVisit.push(start);
-    int distanceTransform[height][width];
     distanceTransform[row][col] = 0;
     visited[row][col] = true;
 
     while (!toVisit.empty()) {
-        cell c = toVisit.pop();
+        cell c = toVisit.front();
+        toVisit.pop();
 
-        for (int i = std::max(c.row-1, 0); i < std::min(c.row+1, height-1); i++) {
-            for (int j = std::max(c.col-1, 0); j < std::min(c.col+1, width-1); j++) {
-                if (!visited[i][j]) {
+        for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, height); ++i) {
+            for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, width); ++j) {
+                if (!visited[i][j] && grid.data.at(i*width+col) >= 0 && grid.data.at(i*width+col) < 50 ) {
                     cell newCell = {i, j};
                     toVisit.push(newCell);
-                    distanceTransform[i][j] == distanceTransform[c.row][c.col]+1;
+                    distanceTransform[i][j] = distanceTransform[c.row][c.col] + 1;
                     visited[i][j] = true;
                 }
             }
         }
     }
 
-    for (size_t row = 0; row < height; ++row) {
-        for (size_t col = 0; col < width; ++col) {
-            int8_t prob = grid.data[row*width + col];
+    /*
+    for (std::size_t i = 0; i < height; i++) {
+        for (std::size_t j = 0; j < width; j++) {
+            std::cout << distanceTransform[i][j] << ", ";
+        }
+        std::cout << std::endl;
+    }
+    */
+
+
+    // Path planning
+    std::vector<geometry_msgs::PoseStamped> poses;
+    int path[height][width] = { };
+    bool cellsVisited[height][width] = { };
+    cell c = {row, col};
+    path.push_back(c);
+
+    while (true) {
+
+        // Find unvisited Neighbouring cell with highest DT
+        cell maxCell = {c.row, c.col};
+        int maxDT = 0;
+        for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, height); i++) {
+            for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, width); j++) {
+                if (distanceTransform[i][j] > maxDT) {
+                    maxCell.row = i;
+                    maxCell.col = j;
+                    maxDT = distanceTransform[i][j];
+                }
+            }
+        }
+
+        // If No Neighbour Cell found then: Mark as Visited and Stop at Goal
+        if (maxDT == 0) {
+            cellsVisited[c.row][c.col] = true;
+        }
+
+        // If Neighbouring Cell DT <= Current Cell DT then: Mark as Visited and Stop at Goal
+        if (maxDT <= distanceTransform[c.row][c.col]) {
+            cellsVisited[c.row][c.col] = true;
+        }
+
+        // Set Current cell to Neigbouring cell
+        c = maxCell;
+
+        path[c.row][c.col] = 1;
+        path.push_back(c);
+        if (path.size() > 10) {
+            break;
         }
     }
+
+    for (std::size_t i = 0; i < 10; i++) {
+        cell myCell = path.at(i);
+        std::cout << "[" << myCell.row << ", " << myCell.col << "], ";
+    }
+    std::cout << std::endl;
 
 }
 
