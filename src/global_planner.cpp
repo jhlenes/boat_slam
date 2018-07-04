@@ -1,7 +1,15 @@
 #include <pluginlib/class_list_macros.h>
 #include "global_planner.h"
 
+#include <queue>
+#include <iostream>
+
 #define DEFAULT_MIN_DIST_FROM_ROBOT 0.10
+
+struct cell {
+    int x;
+    int y;
+};
 
 //register this planner as a BaseGlobalPlanner plugin
 PLUGINLIB_EXPORT_CLASS(global_planner::GlobalPlanner, nav_core::BaseGlobalPlanner)
@@ -80,6 +88,62 @@ namespace global_planner {
         start_tf.getBasis().getEulerYPR(start_yaw, useless_pitch, useless_roll);
         goal_tf.getBasis().getEulerYPR(goal_yaw, useless_pitch, useless_roll);
 
+        /*
+         * 1) Use costmap2d to divide the map into occupied and free cells
+         * 2) Identify the closest cells to the desired start and end pose
+         * 3) Use a wavefront algorithm to assign the distance transform value at each cell
+         * 4) Iterate through these cells in a path of slowest decent as described in the paper
+        */
+
+
+        // 2) Identify the closest cells to the desired start and end pose
+        int start_x, start_y, goal_x, goal_y;
+        costmap_->worldToMapEnforceBounds(start_tf.getOrigin().getX(), start_tf.getOrigin().getY(), start_x, start_y);
+        costmap_->worldToMapEnforceBounds(goal_tf.getOrigin().getX(), goal_tf.getOrigin().getY(), goal_x, goal_y);
+
+
+        // 3) Use a wavefront algorithm to assign the distance transform value at each cell
+
+        // Generate distance transform with BFS
+        int height = costmap_->getSizeInCellsX();
+        int width = costmap_->getSizeInCellsY();
+        std::queue<cell> toVisit;
+        bool visited[height][width] = { };
+        int distanceTransform[height][width] = { };
+
+        cell startCell = {start_x, start_y};
+        toVisit.push(startCell);
+        visited[start_x][start_y] = true;
+
+        while (!toVisit.empty()) {
+            cell c = toVisit.front();
+            toVisit.pop();
+
+            for (int i = std::max(c.x-1, 0); i < std::min(c.x+2, height); ++i) {
+                for (int j = std::max(c.y-1, 0); j < std::min(c.y+2, width); ++j) {
+                    if (!visited[i][j] && costmap_->getCost(i, j) < 127) {
+                        cell newCell = {i, j};
+                        toVisit.push(newCell);
+                        distanceTransform[i][j] = distanceTransform[c.x][c.y] + 1;
+                        visited[i][j] = true;
+                    } else if (costmap_->getCost(i, j) >= 127) {
+                        distanceTransform[i][j] = -1;
+                    }
+                }
+            }
+        }
+
+        for (std::size_t i = 0; i < height; i++) {
+            for (std::size_t j = 0; j < width; j++) {
+                std::cout << distanceTransform[i][j] << ", ";
+            }
+            std::cout << std::endl;
+        }
+
+
+
+
+        {
         //we want to step back along the vector created by the robot's position and the goal pose until we find a legal cell
         double goal_x = goal.pose.position.x;
         double goal_y = goal.pose.position.y;
@@ -131,6 +195,7 @@ namespace global_planner {
 
         plan.push_back(new_goal);
         return (done);
+        }
     }
 
 }

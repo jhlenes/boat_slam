@@ -24,7 +24,7 @@
 
     <!-- Create a map from the cartographer submaps -->
     <node name="cartographer_occupancy_grid_node" pkg="cartographer_ros"
-        type="cartographer_occupancy_grid_node" args="-resolution 0.25" />
+        type="cartographer_occupancy_grid_node" args="-resolution 1" />
 
     <!-- Navigation node -->
     <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
