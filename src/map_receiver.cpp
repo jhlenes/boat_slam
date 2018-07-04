@@ -10,6 +10,7 @@
 
 double x = 0.0;
 double y = 0.0;
+ros::Publisher pub;
 
 struct cell {
     int row;
@@ -51,7 +52,7 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
 
         for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, height); ++i) {
             for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, width); ++j) {
-                if (!visited[i][j] && grid.data.at(i*width+col) >= 0 && grid.data.at(i*width+col) < 50 ) {
+                if (!visited[i][j] ){//&& grid.data.at(i*width+col) >= 0 && grid.data.at(i*width+col) < 50 ) {
                     cell newCell = {i, j};
                     toVisit.push(newCell);
                     distanceTransform[i][j] = distanceTransform[c.row][c.col] + 1;
@@ -76,8 +77,9 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
     int path[height][width] = { };
     bool cellsVisited[height][width] = { };
     cell c = {row, col};
-    path.push_back(c);
+    path[row][col] = 0;
 
+    int counter = 0;
     while (true) {
 
         // Find unvisited Neighbouring cell with highest DT
@@ -85,7 +87,8 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
         int maxDT = 0;
         for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, height); i++) {
             for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, width); j++) {
-                if (distanceTransform[i][j] > maxDT) {
+                if (i == c.row && j == c.col) continue;
+                if (distanceTransform[i][j] > maxDT && !cellsVisited[i][j]) {
                     maxCell.row = i;
                     maxCell.col = j;
                     maxDT = distanceTransform[i][j];
@@ -96,6 +99,7 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
         // If No Neighbour Cell found then: Mark as Visited and Stop at Goal
         if (maxDT == 0) {
             cellsVisited[c.row][c.col] = true;
+            break;
         }
 
         // If Neighbouring Cell DT <= Current Cell DT then: Mark as Visited and Stop at Goal
@@ -106,18 +110,33 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
         // Set Current cell to Neigbouring cell
         c = maxCell;
 
-        path[c.row][c.col] = 1;
-        path.push_back(c);
-        if (path.size() > 10) {
-            break;
-        }
+        // Add to path
+        path[c.row][c.col] = ++counter;
+
+        geometry_msgs::PoseStamped newPoint;
+        newPoint.pose.position.x = c.row * resolution + originX;
+        newPoint.pose.position.y = c.col * resolution + originY;
+        newPoint.header.stamp = ros::Time(0.0);
+        newPoint.header.frame_id = "map";
+        poses.push_back(newPoint);
     }
 
-    for (std::size_t i = 0; i < 10; i++) {
-        cell myCell = path.at(i);
-        std::cout << "[" << myCell.row << ", " << myCell.col << "], ";
+    nav_msgs::Path thePath;
+    thePath.header.stamp = ros::Time(0.0);
+    thePath.header.frame_id = "map";
+    thePath.poses = poses;
+
+    pub.publish(thePath);
+
+
+    /*
+    for (std::size_t i = 0; i < height; i++) {
+        for (std::size_t j = 0; j < width; j++) {
+            std::cout << path[i][j] << ", ";
+        }
+        std::cout << std::endl;
     }
-    std::cout << std::endl;
+    */
 
 }
 
@@ -126,6 +145,7 @@ int main(int argc, char** argv){
     ros::NodeHandle node;
 
     ros::Subscriber sub = node.subscribe("map", 1000, mapCallback);
+    pub = node.advertise<nav_msgs::Path>("my_path", 1000);
 
     tf2_ros::Buffer tfBuffer;
     tf2_ros::TransformListener tfListener(tfBuffer);
