@@ -8,6 +8,10 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   tf2
   tf2_ros
+  nav_core
+  costmap_2d
+  base_local_planner
+  pluginlib
 )
 
 include_directories(${catkin_INCLUDE_DIRS})
@@ -22,3 +26,7 @@ catkin_package()
 ## Add nodes
 add_executable(map_receiver_node src/map_receiver.cpp)
 target_link_libraries(map_receiver_node ${catkin_LIBRARIES})
+
+## Add global path planner plugin
+add_library(global_planner src/global_planner.cpp)
+

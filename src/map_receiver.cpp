@@ -30,6 +30,7 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
     double resolution = grid.info.resolution;
     double originX = grid.info.origin.position.x;
     double originY = grid.info.origin.position.x;
+
     // TODO: is origin always the most negative position value?
     // If not, the following will fail. I.e. negative row and col.
     int row = (x - originX) / resolution;
