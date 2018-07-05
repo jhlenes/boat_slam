@@ -24,23 +24,20 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
     int height = grid.info.height;
     int width = grid.info.width;
 
-    ROS_WARN_STREAM("Size: " << height << ", " << width);
-
     // Find grid position of robot
     double resolution = grid.info.resolution;
     double originX = grid.info.origin.position.x;
-    double originY = grid.info.origin.position.x;
+    double originY = grid.info.origin.position.y;
 
     // TODO: is origin always the most negative position value?
     // If not, the following will fail. I.e. negative row and col.
     int row = (x - originX) / resolution;
     int col = (y - originY) / resolution;
-    ROS_WARN_STREAM("Position: " << row << ", " << col);
 
     // Generate distance transform with BFS
     std::queue<cell> toVisit;
-    bool visited[height][width] = { };
-    int distanceTransform[height][width] = { };
+    bool visited[width][height] = { };
+    int distanceTransform[width][height] = { };
 
     cell start = {row, col};
     toVisit.push(start);
@@ -51,9 +48,10 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
         cell c = toVisit.front();
         toVisit.pop();
 
-        for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, height); ++i) {
-            for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, width); ++j) {
-                if (!visited[i][j] ){//&& grid.data.at(i*width+col) >= 0 && grid.data.at(i*width+col) < 50 ) {
+        for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, width); ++i) {
+            for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, height); ++j) {
+                int gridIndex = j*width+i;
+                if (!visited[i][j] && grid.data[gridIndex] >= 0 && grid.data[gridIndex] < 10 ) {
                     cell newCell = {i, j};
                     toVisit.push(newCell);
                     distanceTransform[i][j] = distanceTransform[c.row][c.col] + 1;
@@ -63,20 +61,10 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
         }
     }
 
-    /*
-    for (std::size_t i = 0; i < height; i++) {
-        for (std::size_t j = 0; j < width; j++) {
-            std::cout << distanceTransform[i][j] << ", ";
-        }
-        std::cout << std::endl;
-    }
-    */
-
-
     // Path planning
     std::vector<geometry_msgs::PoseStamped> poses;
-    int path[height][width] = { };
-    bool cellsVisited[height][width] = { };
+    int path[width][height] = { };
+    bool cellsVisited[width][height] = { };
     cell c = {row, col};
     path[row][col] = 0;
 
@@ -86,8 +74,8 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
         // Find unvisited Neighbouring cell with highest DT
         cell maxCell = {c.row, c.col};
         int maxDT = 0;
-        for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, height); i++) {
-            for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, width); j++) {
+        for (int i = std::max(c.row-1, 0); i < std::min(c.row+2, width); i++) {
+            for (int j = std::max(c.col-1, 0); j < std::min(c.col+2, height); j++) {
                 if (i == c.row && j == c.col) continue;
                 if (distanceTransform[i][j] > maxDT && !cellsVisited[i][j]) {
                     maxCell.row = i;
@@ -115,30 +103,19 @@ void mapCallback(const nav_msgs::OccupancyGrid &grid){
         path[c.row][c.col] = ++counter;
 
         geometry_msgs::PoseStamped newPoint;
-        newPoint.pose.position.x = c.row * resolution + originX;
-        newPoint.pose.position.y = c.col * resolution + originY;
+        newPoint.pose.position.x = (c.row + 0.5) * resolution + originX;
+        newPoint.pose.position.y = (c.col + 0.5) * resolution + originY;
         newPoint.header.stamp = ros::Time(0.0);
         newPoint.header.frame_id = "map";
         poses.push_back(newPoint);
     }
 
     nav_msgs::Path thePath;
-    thePath.header.stamp = ros::Time(0.0);
+    thePath.header.stamp = ros::Time::now();
     thePath.header.frame_id = "map";
     thePath.poses = poses;
 
     pub.publish(thePath);
-
-
-    /*
-    for (std::size_t i = 0; i < height; i++) {
-        for (std::size_t j = 0; j < width; j++) {
-            std::cout << path[i][j] << ", ";
-        }
-        std::cout << std::endl;
-    }
-    */
-
 }
 
 int main(int argc, char** argv){

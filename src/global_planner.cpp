@@ -1,7 +1,9 @@
 #include <pluginlib/class_list_macros.h>
 #include "global_planner.h"
+#include <nav_msgs/Path.h>
 
 #include <queue>
+#include <stack>
 #include <iostream>
 
 #define DEFAULT_MIN_DIST_FROM_ROBOT 0.10
@@ -98,8 +100,8 @@ namespace global_planner {
 
         // 2) Identify the closest cells to the desired start and end pose
         int start_x, start_y, goal_x, goal_y;
-        costmap_->worldToMapEnforceBounds(start_tf.getOrigin().getX(), start_tf.getOrigin().getY(), start_x, start_y);
-        costmap_->worldToMapEnforceBounds(goal_tf.getOrigin().getX(), goal_tf.getOrigin().getY(), goal_x, goal_y);
+        costmap_->worldToMapEnforceBounds(start.pose.position.x, start.pose.position.y, start_x, start_y);
+        costmap_->worldToMapEnforceBounds(goal.pose.position.x, goal.pose.position.y, goal_x, goal_y);
 
         ROS_WARN("Start_x: %d\tstart_y: %d", start_x, start_y);
 
@@ -123,7 +125,7 @@ namespace global_planner {
 
             for (int i = std::max(c.x-1, 0); i < std::min(c.x+2, height); ++i) {
                 for (int j = std::max(c.y-1, 0); j < std::min(c.y+2, width); ++j) {
-                    if (!visited[i][j] && costmap_->getCost(i, j) < 127) {
+                    if (!visited[i][j] && costmap_->getCost(i, j) < 25) {
                         cell newCell = {i, j};
                         toVisit.push(newCell);
                         distanceTransform[i][j] = distanceTransform[c.x][c.y] + 1;
@@ -156,12 +158,16 @@ namespace global_planner {
             // If No Neighbour Cell found then: Mark as Visited and Stop at Goal
             if (maxDT == 0) {
                 cellsVisited[c.x][c.y] = true;
+                ROS_WARN("No neighbour!");
                 break;
             }
 
             // If Neighbouring Cell DT <= Current Cell DT then: Mark as Visited and Stop at Goal
             if (maxDT <= distanceTransform[c.x][c.y]) {
                 cellsVisited[c.x][c.y] = true;
+                if (c.x == start_x && c.y == start_y) {
+                    break;
+                }
             }
 
             // Set Current cell to Neigbouring cell
@@ -174,71 +180,24 @@ namespace global_planner {
             newPoint.pose.position.x = wx;
             newPoint.pose.position.y = wy;
 
-            tf::Quaternion pointQuat = tf::createQuaternionFromYaw(0.0);
-            newPoint.pose.orientation.x = pointQuat.x();
-            newPoint.pose.orientation.y = pointQuat.y();
-            newPoint.pose.orientation.z = pointQuat.z();
-            newPoint.pose.orientation.w = pointQuat.w();
-
-
             plan.push_back(newPoint);
+
         }
 
-        /*
-        {
-        //we want to step back along the vector created by the robot's position and the goal pose until we find a legal cell
-        double goal_x = goal.pose.position.x;
-        double goal_y = goal.pose.position.y;
-        double start_x = start.pose.position.x;
-        double start_y = start.pose.position.y;
+        ROS_WARN("Size: %d", plan.size());
 
-        double diff_x = goal_x - start_x;
-        double diff_y = goal_y - start_y;
-        double diff_yaw = angles::normalize_angle(goal_yaw-start_yaw);
+        ros::NodeHandle node("~/temp");
+        ros::Publisher pub = node.advertise<nav_msgs::Path>("my_path", 1000);
 
-        double target_x = goal_x;
-        double target_y = goal_y;
-        double target_yaw = goal_yaw;
+        nav_msgs::Path thePath;
+        thePath.header.stamp = start.header.stamp;
+        thePath.header.frame_id = start.header.frame_id;
+        thePath.poses = plan;
 
-        bool done = false;
-        double scale = 1.0;
-        double dScale = 0.01;
+        pub.publish(thePath);
 
-        while(!done) {
-            if(scale < 0) {
-                target_x = start_x;
-                target_y = start_y;
-                target_yaw = start_yaw;
-                ROS_WARN("The carrot planner could not find a valid plan for this goal");
-                break;
-            }
-            target_x = start_x + scale * diff_x;
-            target_y = start_y + scale * diff_y;
-            target_yaw = angles::normalize_angle(start_yaw + scale * diff_yaw);
+        return true;
 
-            double footprint_cost = footprintCost(target_x, target_y, target_yaw);
-            if(footprint_cost >= 0) {
-             done = true;
-            }
-            scale -=dScale;
-        }
-
-        plan.push_back(start);
-        geometry_msgs::PoseStamped new_goal = goal;
-        tf::Quaternion goal_quat = tf::createQuaternionFromYaw(target_yaw);
-
-        new_goal.pose.position.x = target_x;
-        new_goal.pose.position.y = target_y;
-
-        new_goal.pose.orientation.x = goal_quat.x();
-        new_goal.pose.orientation.y = goal_quat.y();
-        new_goal.pose.orientation.z = goal_quat.z();
-        new_goal.pose.orientation.w = goal_quat.w();
-
-        plan.push_back(new_goal);
-        return (done);
-        }
-        */
     }
 
 }
