@@ -101,6 +101,8 @@ namespace global_planner {
         costmap_->worldToMapEnforceBounds(start_tf.getOrigin().getX(), start_tf.getOrigin().getY(), start_x, start_y);
         costmap_->worldToMapEnforceBounds(goal_tf.getOrigin().getX(), goal_tf.getOrigin().getY(), goal_x, goal_y);
 
+        ROS_WARN("Start_x: %d\tstart_y: %d", start_x, start_y);
+
 
         // 3) Use a wavefront algorithm to assign the distance transform value at each cell
 
@@ -126,23 +128,63 @@ namespace global_planner {
                         toVisit.push(newCell);
                         distanceTransform[i][j] = distanceTransform[c.x][c.y] + 1;
                         visited[i][j] = true;
-                    } else if (costmap_->getCost(i, j) >= 127) {
-                        distanceTransform[i][j] = -1;
                     }
                 }
             }
         }
 
-        for (std::size_t i = 0; i < height; i++) {
-            for (std::size_t j = 0; j < width; j++) {
-                std::cout << distanceTransform[i][j] << ", ";
+        // 4) Iterate through these cells in a path of slowest decent as described in the paper
+        bool cellsVisited[height][width] = { };
+        cell c = {start_x, start_y};
+
+        while (true) {
+
+            // Find unvisited Neighbouring cell with highest DT
+            cell maxCell = {c.x, c.y};
+            int maxDT = 0;
+            for (int i = std::max(c.x-1, 0); i < std::min(c.x+2, height); i++) {
+                for (int j = std::max(c.y-1, 0); j < std::min(c.y+2, width); j++) {
+                    if (i == c.x && j == c.y) continue;
+                    if (distanceTransform[i][j] > maxDT && !cellsVisited[i][j]) {
+                        maxCell.x = i;
+                        maxCell.y = j;
+                        maxDT = distanceTransform[i][j];
+                    }
+                }
             }
-            std::cout << std::endl;
+
+            // If No Neighbour Cell found then: Mark as Visited and Stop at Goal
+            if (maxDT == 0) {
+                cellsVisited[c.x][c.y] = true;
+                break;
+            }
+
+            // If Neighbouring Cell DT <= Current Cell DT then: Mark as Visited and Stop at Goal
+            if (maxDT <= distanceTransform[c.x][c.y]) {
+                cellsVisited[c.x][c.y] = true;
+            }
+
+            // Set Current cell to Neigbouring cell
+            c = maxCell;
+
+            // Add to path
+            geometry_msgs::PoseStamped newPoint = start;
+            double wx, wy;
+            costmap_->mapToWorld(c.x, c.y, wx, wy);
+            newPoint.pose.position.x = wx;
+            newPoint.pose.position.y = wy;
+
+            tf::Quaternion pointQuat = tf::createQuaternionFromYaw(0.0);
+            newPoint.pose.orientation.x = pointQuat.x();
+            newPoint.pose.orientation.y = pointQuat.y();
+            newPoint.pose.orientation.z = pointQuat.z();
+            newPoint.pose.orientation.w = pointQuat.w();
+
+
+            plan.push_back(newPoint);
         }
 
-
-
-
+        /*
         {
         //we want to step back along the vector created by the robot's position and the goal pose until we find a legal cell
         double goal_x = goal.pose.position.x;
@@ -196,6 +238,7 @@ namespace global_planner {
         plan.push_back(new_goal);
         return (done);
         }
+        */
     }
 
 }
