@@ -1,15 +1,18 @@
 #include <ros/ros.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf/tf.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Path.h>
 
 #include <queue>
 #include <algorithm>
-#include <vector>
 #include <iostream>
+#include <math.h>
 
 double x = 0.0;
 double y = 0.0;
+double psi = 0.0;
+
 ros::Publisher pub;
 
 struct cell {
@@ -17,9 +20,60 @@ struct cell {
     int col;
 };
 
+nav_msgs::OccupancyGrid occGrid;
+
+bool M[100][100] = { };
+int originX = 50;
+int originY = 50;
+int tileX = 50;
+int tileY = 50;
+int tileResolution = 0.5;
+
+bool isFree(int x, int y) {
+    return true;
+}
+
+/**
+ * @brief BM Boustrophedon motion (BM) algorithm
+ */
+void BM() {
+    /*
+    Inputs: The robot’s configuration and the model M of the workspace
+
+    Outputs: Updated version of the robot’s configuration and the model M of the workspace
+
+    Step 1. Check to find the first available direction in the
+    priority of north-south-east-west. If all directions are
+    blocked, then the critical point has been reached. Break the
+    loop.
+
+    Step 2. Move one step along this direction.
+
+    Step 3. Generate the tile s = (x, y, 2r), i.e., the size of the robot’s diameter at the robot’s position.
+
+    Step 4. Add the tile s to the mode M. Go to Step 1.
+    */
+
+    // Find tile where robot is located
+    tileX = std::floor(x / tileResolution) + originX;
+    tileY = std::floor(y / tileResolution) + originY;
+
+    M[tileX][tileY] = true;
+
+    // check if next tile is free for obstacles and not covered already
+    if (!M[tileX+1][tileY] && isFree(tileX+1, tileY)) {
+        // set path to next cell
+    }
+
+
+
+}
+
 void mapCallback(const nav_msgs::OccupancyGrid &grid){
 
     ROS_WARN("MAP RECEIVED!");
+    occGrid = grid;
+    return;
 
     int height = grid.info.height;
     int width = grid.info.width;
@@ -123,26 +177,31 @@ int main(int argc, char** argv){
     ros::NodeHandle node;
 
     ros::Subscriber sub = node.subscribe("map", 1000, mapCallback);
-    pub = node.advertise<nav_msgs::Path>("my_path", 1000);
+    //pub = node.advertise<nav_msgs::Path>("my_path", 1000);
 
     tf2_ros::Buffer tfBuffer;
     tf2_ros::TransformListener tfListener(tfBuffer);
 
+    // Set current tile to covered
+    M[originX][originY] = true;
+
     ros::Rate rate(10.0);
     while (node.ok()) {
 
-        // get the position
+        // get the pose of the robot in the map frame
         geometry_msgs::TransformStamped transformStamped;
         try{
-          transformStamped = tfBuffer.lookupTransform("base_link", "map", ros::Time(0.0), ros::Duration(0.0));
+            transformStamped = tfBuffer.lookupTransform("map", "base_link", ros::Time(0.0), ros::Duration(0.0));
         }
         catch (tf2::TransformException &ex) {
-          ROS_WARN("Transform from map to base_link not found.");
-          continue;
+            ROS_WARN("Transform from map to base_link not found.");
+            continue;
         }
-
         x = transformStamped.transform.translation.x;
         y = transformStamped.transform.translation.y;
+        tf::Quaternion q(transformStamped.transform.rotation.x, transformStamped.transform.rotation.y,
+                         transformStamped.transform.rotation.z, transformStamped.transform.rotation.w);
+        psi = tf::getYaw(q);
 
         ros::spinOnce();
         rate.sleep();
