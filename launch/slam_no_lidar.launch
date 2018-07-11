@@ -2,9 +2,8 @@
 
     <!-- Set up transformations between the 'laser' and 'base_link' frames.
         'laser' is the lidar, 'base_link' is the base of the robot. -->
-    <!--<param name="robot_description" textfile="$(find boat_slam)/urdf/backpack_2d.urdf" />-->
     <!--
-    <param name="robot_description" command="$(find xacro)/xacro -inorder $(find otter_description)/urdf/otter.xacro" />
+    <param name="robot_description" textfile="$(find boat_slam)/urdf/backpack_2d.urdf" />
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
     -->
 
