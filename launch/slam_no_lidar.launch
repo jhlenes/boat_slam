@@ -2,10 +2,10 @@
 
     <!-- Set up transformations between the 'laser' and 'base_link' frames.
         'laser' is the lidar, 'base_link' is the base of the robot. -->
-    <!--
+
     <param name="robot_description" textfile="$(find boat_slam)/urdf/backpack_2d.urdf" />
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
-    -->
+
 
     <!-- Start the cartographer node. This node does SLAM. -->
     <node name="cartographer_node" pkg="cartographer_ros"
