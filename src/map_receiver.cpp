@@ -15,6 +15,9 @@ double y = 0.0;
 double psi = 0.0;
 
 ros::Publisher pub;
+ros::Publisher pub2;
+nav_msgs::Path coveredPath;
+
 
 struct cell {
     int row;
@@ -108,12 +111,21 @@ void BM() {
     goal.pose.position.x = (goalX + 0.5 - originX) * tileResolution;
     goal.pose.position.y = (goalY + 0.5 - originY) * tileResolution;
     goal.pose.position.z = 0.0;
-    goal.pose.orientation.x = 0.0;
-    goal.pose.orientation.y = 0.0;
-    goal.pose.orientation.z = 0.0;
-    goal.pose.orientation.w = 1.0;
+
+    double psi = std::atan2(goalY-tileY, goalX-tileX);
+    tf::Quaternion q = tf::createQuaternionFromYaw(psi);
+    goal.pose.orientation.x = q.x();
+    goal.pose.orientation.y = q.y();
+    goal.pose.orientation.z = q.z();
+    goal.pose.orientation.w = q.w();
 
     pub.publish(goal);
+
+    coveredPath.header.stamp = ros::Time::now();
+    coveredPath.header.frame_id = "map";
+    coveredPath.poses.push_back(goal);
+
+    pub2.publish(coveredPath);
 
 }
 
@@ -225,6 +237,7 @@ int main(int argc, char** argv){
 
     ros::Subscriber sub = node.subscribe("map", 1000, mapCallback);
     pub = node.advertise<geometry_msgs::PoseStamped>("move_base_simple/goal", 1000);
+    pub2 = node.advertise<nav_msgs::Path>("mypath", 1000);
 
     tf2_ros::Buffer tfBuffer;
     tf2_ros::TransformListener tfListener(tfBuffer);
