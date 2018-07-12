@@ -3,6 +3,7 @@
 #include <tf/tf.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Path.h>
+#include <geometry_msgs/PoseStamped.h>
 
 #include <queue>
 #include <algorithm>
@@ -27,9 +28,31 @@ int originX = 50;
 int originY = 50;
 int tileX = 50;
 int tileY = 50;
-int tileResolution = 0.5;
+double tileResolution = 0.5;
 
-bool isFree(int x, int y) {
+bool isFree(int xTile, int yTile) {
+
+    if (occGrid.info.resolution == 0) return false;
+
+
+    // start position of tile
+    double xPos = (xTile - originX) * tileResolution;
+    double yPos = (yTile - originY) * tileResolution;
+
+    // Find occupancy grid position of tile
+    int gridX = (xPos - occGrid.info.origin.position.x) / occGrid.info.resolution;
+    int gridY = (yPos - occGrid.info.origin.position.y) / occGrid.info.resolution;
+
+    // Check if all grid cells in the tile are free
+    for (int i = 0; i * occGrid.info.resolution < tileResolution; i++) {
+        for (int j = 0; j * occGrid.info.resolution < tileResolution; j++) {
+            int gridIndex = (gridY+j)*occGrid.info.width+(gridX+i);
+            if (occGrid.data[gridIndex] > 10) {
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -61,17 +84,41 @@ void BM() {
     M[tileX][tileY] = true;
 
     // check if next tile is free for obstacles and not covered already
-    if (!M[tileX+1][tileY] && isFree(tileX+1, tileY)) {
-        // set path to next cell
+    int goalX = tileX;
+    int goalY = tileY;
+    if (isFree(tileX+1, tileY) && !M[tileX+1][tileY]) {
+        ROS_WARN_STREAM("Moving to north tile!");
+        goalX++;
+    } else if (isFree(tileX-1, tileY) && !M[tileX-1][tileY]) {
+        ROS_WARN_STREAM("Moving to south tile!");
+        goalX--;
+    } else if (isFree(tileX, tileY-1) && !M[tileX][tileY-1]) {
+        ROS_WARN_STREAM("Moving to east tile!");
+        goalY--;
+    } else if (isFree(tileX, tileY+1) && !M[tileX][tileY+1]) {
+        ROS_WARN_STREAM("Moving to west tile!");
+        goalY++;
+    } else {
+        ROS_WARN_STREAM("Critical point!");
     }
 
+    geometry_msgs::PoseStamped goal;
+    goal.header.stamp = ros::Time::now();
+    goal.header.frame_id = "map";
+    goal.pose.position.x = (goalX + 0.5 - originX) * tileResolution;
+    goal.pose.position.y = (goalY + 0.5 - originY) * tileResolution;
+    goal.pose.position.z = 0.0;
+    goal.pose.orientation.x = 0.0;
+    goal.pose.orientation.y = 0.0;
+    goal.pose.orientation.z = 0.0;
+    goal.pose.orientation.w = 1.0;
 
+    pub.publish(goal);
 
 }
 
 void mapCallback(const nav_msgs::OccupancyGrid &grid){
 
-    ROS_WARN("MAP RECEIVED!");
     occGrid = grid;
     return;
 
@@ -177,7 +224,7 @@ int main(int argc, char** argv){
     ros::NodeHandle node;
 
     ros::Subscriber sub = node.subscribe("map", 1000, mapCallback);
-    //pub = node.advertise<nav_msgs::Path>("my_path", 1000);
+    pub = node.advertise<geometry_msgs::PoseStamped>("move_base_simple/goal", 1000);
 
     tf2_ros::Buffer tfBuffer;
     tf2_ros::TransformListener tfListener(tfBuffer);
@@ -202,6 +249,8 @@ int main(int argc, char** argv){
         tf::Quaternion q(transformStamped.transform.rotation.x, transformStamped.transform.rotation.y,
                          transformStamped.transform.rotation.z, transformStamped.transform.rotation.w);
         psi = tf::getYaw(q);
+
+        BM();
 
         ros::spinOnce();
         rate.sleep();
