@@ -26,19 +26,30 @@ struct cell {
 
 nav_msgs::OccupancyGrid occGrid;
 
-bool M[100][100] = { };
+
+const int UNKNOWN = 0;
+const int COVERED = 1;
+const int FREE = 2;
+const int BLOCKED = 3;
+
+int M[100][100] = {};
 int originX = 50;
 int originY = 50;
 int tileX = 50;
 int tileY = 50;
 double tileResolution = 0.5;
 
+void locateBestBacktrackingPoint() {
+
+
+
+}
+
 bool isFree(int xTile, int yTile) {
 
     if (occGrid.info.resolution == 0) return false;
 
-
-    // start position of tile
+    // Find start position of tile
     double xPos = (xTile - originX) * tileResolution;
     double yPos = (yTile - originY) * tileResolution;
 
@@ -84,28 +95,77 @@ void BM() {
     tileX = std::floor(x / tileResolution) + originX;
     tileY = std::floor(y / tileResolution) + originY;
 
-    M[tileX][tileY] = true;
+    M[tileX][tileY] = COVERED;
 
     // check if next tile is free for obstacles and not covered already
-    int goalX = tileX;
-    int goalY = tileY;
-    if (isFree(tileX+1, tileY) && !M[tileX+1][tileY]) {
-        ROS_WARN_STREAM("Moving to north tile!");
-        goalX++;
-    } else if (isFree(tileX-1, tileY) && !M[tileX-1][tileY]) {
-        ROS_WARN_STREAM("Moving to south tile!");
-        goalX--;
-    } else if (isFree(tileX, tileY-1) && !M[tileX][tileY-1]) {
-        ROS_WARN_STREAM("Moving to east tile!");
-        goalY--;
-    } else if (isFree(tileX, tileY+1) && !M[tileX][tileY+1]) {
-        ROS_WARN_STREAM("Moving to west tile!");
-        goalY++;
-    } else {
-        ROS_WARN_STREAM("Critical point!");
+    static bool hasGoal = false;
+    static int goalX = tileX;
+    static int goalY = tileY;
+    if (goalX == tileX && goalY == tileY) {
+        hasGoal = false;
     }
 
+    if (M[tileX+1][tileY] != COVERED) {
+        if (isFree(tileX+1, tileY)) {
+            if (!hasGoal) {
+                ROS_WARN_STREAM("Moving to north tile!");
+                goalX++;
+                hasGoal = true;
+            } else {
+                M[tileX+1][tileY] = FREE;
+            }
+        } else {
+            M[tileX+1][tileY] = BLOCKED;
+        }
+    }
+    if (M[tileX-1][tileY] != COVERED) {
+        if (isFree(tileX-1, tileY)) {
+            if (!hasGoal) {
+                ROS_WARN_STREAM("Moving to south tile!");
+                goalX--;
+                hasGoal = true;
+            } else {
+                M[tileX-1][tileY] = FREE;
+            }
+        } else {
+            M[tileX-1][tileY] = BLOCKED;
+        }
+    }
+    if (M[tileX][tileY-1] != COVERED) {
+        if (isFree(tileX, tileY-1)) {
+            if (!hasGoal) {
+                ROS_WARN_STREAM("Moving to east tile!");
+                goalY--;
+                hasGoal = true;
+            } else {
+                M[tileX][tileY-1] = FREE;
+            }
+        } else {
+            M[tileX][tileY-1] = BLOCKED;
+        }
+    }
+    if (M[tileX][tileY+1] != COVERED) {
+        if (isFree(tileX, tileY+1)) {
+            if (!hasGoal) {
+                ROS_WARN_STREAM("Moving to west tile!");
+                goalY++;
+                hasGoal = true;
+            } else {
+                M[tileX][tileY+1] = FREE;
+            }
+        } else {
+            M[tileX][tileY+1] = BLOCKED;
+        }
+    }
+    if (!hasGoal) {
+        ROS_WARN_STREAM("Critical point!");
+        locateBestBacktrackingPoint();
+        return;
+    }
+
+    // publish goal tile and covered path
     geometry_msgs::PoseStamped goal;
+
     goal.header.stamp = ros::Time::now();
     goal.header.frame_id = "map";
     goal.pose.position.x = (goalX + 0.5 - originX) * tileResolution;
@@ -114,6 +174,7 @@ void BM() {
 
     double psi = std::atan2(goalY-tileY, goalX-tileX);
     tf::Quaternion q = tf::createQuaternionFromYaw(psi);
+
     goal.pose.orientation.x = q.x();
     goal.pose.orientation.y = q.y();
     goal.pose.orientation.z = q.z();
@@ -126,7 +187,6 @@ void BM() {
     coveredPath.poses.push_back(goal);
 
     pub2.publish(coveredPath);
-
 }
 
 void mapCallback(const nav_msgs::OccupancyGrid &grid){
@@ -243,7 +303,7 @@ int main(int argc, char** argv){
     tf2_ros::TransformListener tfListener(tfBuffer);
 
     // Set current tile to covered
-    M[originX][originY] = true;
+    M[originX][originY] = COVERED;
 
     ros::Rate rate(10.0);
     while (node.ok()) {
