@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <math.h>
+#include <vector>
 
 double x = 0.0;
 double y = 0.0;
@@ -26,23 +27,68 @@ struct cell {
 
 nav_msgs::OccupancyGrid occGrid;
 
-
 const int UNKNOWN = 0;
-const int COVERED = 1;
-const int FREE = 2;
+const int FREE = 1;
+const int COVERED = 2;
 const int BLOCKED = 3;
 
-int M[100][100] = {};
+struct tile {
+    int x;
+    int y;
+};
+
+const int TILE_SIZE = 100;
+int M[TILE_SIZE][TILE_SIZE] = {};
+std::vector<tile> BP;
 int originX = 50;
 int originY = 50;
 int tileX = 50;
 int tileY = 50;
-double tileResolution = 0.5;
+double tileResolution = 0.50;
 
-void locateBestBacktrackingPoint() {
+bool isBacktrackingPoint(int i, int j) {
+    // b(s1,s8) or b(s1,s2)
+    bool eastFree = M[i][j-1] == FREE && (M[i+1][j-1] >= COVERED || M[i-1][j-1] >= COVERED);
 
+    // b(s5,s6) or b(s5,s4)
+    bool westFree = M[i][j+1] == FREE && (M[i+1][j+1] >= COVERED || M[i-1][j+1] >= COVERED);
 
+    // b(s7,s6) or b(s7,s8)
+    bool southFree = M[i-1][j] == FREE && (M[i-1][j+1] >= COVERED || M[i-1][j-1] >= COVERED);
 
+    return eastFree || westFree || southFree;
+}
+
+void locateBestBacktrackingPoint(int &goalX, int &goalY, int tileX, int tileY) {
+
+    // find points
+    BP.clear();
+    int closestPoint = 0;
+    double minDistance = -1.0;
+    for (int i = 1; i < TILE_SIZE-1; i++) {
+        for (int j = 1; j < TILE_SIZE-1; j++) {
+            if (M[i][j] != COVERED) {
+                continue;
+            }
+            if (isBacktrackingPoint(i, j)) {
+                tile point = {i, j};
+                BP.push_back(point);
+
+                double dist = std::sqrt(std::pow(i - tileX, 2) + std::pow(j - tileY, 2));
+                if (dist < minDistance || minDistance < 0) {
+                    closestPoint = BP.size() - 1;
+                    minDistance = dist;
+                }
+            }
+        }
+    }
+
+    // find the nearest point. TODO: change to shortest path on covered tiles
+    if (BP.size() > 0) {
+        tile best = BP.at(closestPoint);
+        goalX = best.x;
+        goalY = best.y;
+    }
 }
 
 bool isFree(int xTile, int yTile) {
@@ -95,7 +141,6 @@ void BM() {
     tileX = std::floor(x / tileResolution) + originX;
     tileY = std::floor(y / tileResolution) + originY;
 
-    M[tileX][tileY] = COVERED;
 
     // check if next tile is free for obstacles and not covered already
     static bool hasGoal = false;
@@ -103,6 +148,7 @@ void BM() {
     static int goalY = tileY;
     if (goalX == tileX && goalY == tileY) {
         hasGoal = false;
+        M[tileX][tileY] = COVERED;
     }
 
     if (M[tileX+1][tileY] != COVERED) {
@@ -159,8 +205,8 @@ void BM() {
     }
     if (!hasGoal) {
         ROS_WARN_STREAM("Critical point!");
-        locateBestBacktrackingPoint();
-        return;
+        locateBestBacktrackingPoint(goalX, goalY, tileX, tileY);
+        hasGoal = true;
     }
 
     // publish goal tile and covered path
